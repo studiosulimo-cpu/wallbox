@@ -664,6 +664,7 @@ function defaults(tipo) {
     prof: 'auto', prof_eur: 0,
     // fornitore e lotto
     lot: 50, se8: true, wb_price: 0, n_year: 40, sped_pz: true, cavo7: false,
+    supply: 'seh', spot_name: '', spot_ship: 0, spot_warr: 24, spot_rcbo: false,
     // pratiche, bonus, servizi
     dist_in: false, pr_amm_on: true, bonus_on: true, bonus_srv: false,
     bp_on: false, manut_on: false, manut_int: 1, svc_markup: 35, rent_on: false, rent_coef: 3.2, rent_months: 36, svc_pdf: false,
@@ -757,19 +758,21 @@ function compute(S) {
   }
 
   /* ---- protezioni ---- */
+  const spot = S.supply === 'spot'; d.spot = spot;
+  const rcboSrc = spot ? (S.spot_rcbo ? 'spot' : 'own') : S.rcbo_src; d.rcboSrc = rcboSrc;
   const rcdNeed = S.rcd_type === 'auto' ? (P.rdc ? 'A' : 'B') : S.rcd_type; d.rcd = rcdNeed;
-  const InLine = S.rcbo_src === 'seh' ? 32 : (S.line_future ? 32 : (STD_IN.find(x => x >= tg.I) || 32)); d.In = InLine;
-  const IbDes = S.line_future || S.rcbo_src === 'seh' ? 32 : tg.I; d.IbDes = IbDes;
+  const InLine = rcboSrc === 'seh' ? 32 : (S.line_future ? 32 : (STD_IN.find(x => x >= tg.I) || 32)); d.In = InLine;
+  const IbDes = S.line_future || rcboSrc === 'seh' ? 32 : tg.I; d.IbDes = IbDes;
   const icc3 = S.icc > 0 ? S.icc : (fase === 3 ? 10 : 6);
   const icc = ph === 3 ? icc3 : (fase === 3 ? Math.min(icc3, 6) : icc3); d.icc = icc;   // punto monofase su sistema trifase: Icc F-N convenzionale 6 kA
-  const rcboIcn = S.rcbo_src === 'seh' ? (S.rcbo_icn || 6) : 10; d.rcboIcn = rcboIcn;
+  const rcboIcn = rcboSrc === 'own' ? 10 : (S.rcbo_icn || 6); d.rcboIcn = rcboIcn;
   if (!P.rdc && rcdNeed === 'A') chk('err', 'Differenziale tipo A senza rilevazione DC 6 mA', 'La wallbox non integra un RDC-DD da 6 mA: serve un differenziale di tipo B (o tipo A con RDC-DD esterno conforme CEI EN IEC 62955).', 'CEI 64-8 sez. 722.531.3.101');
   else if (rcdNeed === 'A') chk('ok', 'Protezione differenziale', `Tipo A IΔn 30 mA dedicato al punto di ricarica + RDC-DD 6 mA DC integrato nella wallbox. Conformità del RDC-DD alla CEI EN IEC 62955 da documentare con la scheda del costruttore.`, 'CEI 64-8 sez. 722.531.3.101 · CEI EN IEC 62955');
   else chk('ok', 'Protezione differenziale', 'Tipo B IΔn 30 mA dedicato al punto di ricarica.', 'CEI 64-8 sez. 722.531.3.101');
-  if (S.rcbo_src === 'seh' && rcdNeed === 'B') chk('warn', 'Protezione S&h non adatta', 'WO12/WO13 sono di tipo A: con differenziale tipo B usare una protezione propria.');
-  if (S.rcbo_src === 'seh' && !com && (tg.I < 32)) chk('info', 'Protezione S&h da 32 A con taglia ridotta', `La protezione fornita da S&h è dimensionata per ${ph === 3 ? '22' : '7,4'} kW: la linea va comunque dimensionata per 32 A, la wallbox si imposta a ${tg.I} A.`);
-  if (rcboIcn + 1e-9 < icc) chk('warn', 'Potere di interruzione della protezione', `Icc presunta ${String(icc).replace('.', ',')} kA al punto di installazione contro Icn ${String(rcboIcn).replace('.', ',')} kA${S.rcbo_src === 'seh' ? ' (valore non dichiarato da S&h: impostato a ipotesi)' : ''}. Serve Icn ≥ Icc o un back-up dichiarato dal costruttore.`, 'CEI 64-8 art. 434.3 · CEI 0-21 (Icc convenzionale 6 kA mono, 10 kA tri)');
-  else chk('ok', 'Potere di interruzione', `Icn ${String(rcboIcn).replace('.', ',')} kA ≥ Icc presunta ${String(icc).replace('.', ',')} kA${S.rcbo_src === 'seh' ? ' (Icn della protezione S&h da confermare)' : ''}.`, 'CEI 64-8 art. 434.3');
+  if (rcboSrc === 'seh' && rcdNeed === 'B') chk('warn', 'Protezione S&h non adatta', 'WO12/WO13 sono di tipo A: con differenziale tipo B usare una protezione propria.');
+  if (rcboSrc === 'seh' && !com && (tg.I < 32)) chk('info', 'Protezione S&h da 32 A con taglia ridotta', `La protezione fornita da S&h è dimensionata per ${ph === 3 ? '22' : '7,4'} kW: la linea va comunque dimensionata per 32 A, la wallbox si imposta a ${tg.I} A.`);
+  if (rcboIcn + 1e-9 < icc) chk('warn', 'Potere di interruzione della protezione', `Icc presunta ${String(icc).replace('.', ',')} kA al punto di installazione contro Icn ${String(rcboIcn).replace('.', ',')} kA${rcboSrc === 'seh' ? ' (valore non dichiarato da S&h: impostato a ipotesi)' : ''}. Serve Icn ≥ Icc o un back-up dichiarato dal costruttore.`, 'CEI 64-8 art. 434.3 · CEI 0-21 (Icc convenzionale 6 kA mono, 10 kA tri)');
+  else chk('ok', 'Potere di interruzione', `Icn ${String(rcboIcn).replace('.', ',')} kA ≥ Icc presunta ${String(icc).replace('.', ',')} kA${rcboSrc === 'seh' ? ' (Icn della protezione S&h da confermare)' : ''}.`, 'CEI 64-8 art. 434.3');
   if (!com && S.origine === 'quadro') {
     if (S.gen_rcd === '30') chk('warn', 'Differenziale generale da 30 mA a monte', 'Due differenziali da 30 mA in serie non sono selettivi: un guasto sulla wallbox può togliere tensione a tutta la casa. Alimentare la linea a monte del differenziale generale o sostituirlo con un tipo S.', 'CEI 64-8 art. 536');
     if (S.gen_rcd === 'S300') chk('ok', 'Selettività differenziale', 'Generale selettivo tipo S a monte del 30 mA della wallbox.', 'CEI 64-8 art. 536');
@@ -807,7 +810,7 @@ function compute(S) {
     chk('ok', 'Cortocircuito minimo a fondo linea', `Icc min ≈ ${line.icc.toFixed(0)} A ≥ 10·In = ${10 * InLine} A (curva C): intervento magnetico garantito.`, 'CEI 64-8 art. 533.3 (formula convenzionale)');
     chk('ok', 'Energia specifica passante', `K²S² = ${Math.round(143 * 143 * line.S * line.S).toLocaleString('it-IT')} A²s ≫ I²t di un C${InLine} a ${icc} kA (< 40.000 A²s, curve dei costruttori).`, 'CEI 64-8 art. 434.3.2');
   }
-  if (!S.line_future && S.rcbo_src !== 'seh' && tg.I < 32) chk('warn', 'Linea dimensionata solo per la taglia attuale', `Linea e protezione per ${tg.I} A: se il cliente cambia auto o aumenta la potenza la linea va rifatta. La differenza di costo verso 32 A è di solito piccola rispetto al rifacimento.`);
+  if (!S.line_future && rcboSrc !== 'seh' && tg.I < 32) chk('warn', 'Linea dimensionata solo per la taglia attuale', `Linea e protezione per ${tg.I} A: se il cliente cambia auto o aumenta la potenza la linea va rifatta. La differenza di costo verso 32 A è di solito piccola rispetto al rifacimento.`);
   if (tratte.some(t => t.posa === 'esistente')) chk('info', 'Tubazione esistente', 'Verificare diametro, coefficiente di riempimento e assenza di circuiti di altri sistemi nella stessa tubazione.', 'CEI 64-8 art. 522.8 · 528.1');
   if (tratte.some(t => t.posa === 'interrato')) chk('info', 'Cavidotto interrato', 'Cavo FG16OR16 (adatto alla posa interrata) in cavidotto con nastro segnalatore; profondità e protezione meccanica secondo la norma; pozzetti ai cambi di direzione.', 'CEI 11-17 · CEI 64-8 art. 522.8');
   if (com && S.arch === 'radiale' && tratte.some(t => t.grup < Math.min(n, 9) && t.posa === 'passerella')) chk('info', 'Raggruppamento delle linee radiali', `In architettura radiale le ${n} linee corrono insieme: il coefficiente di raggruppamento della tratta comune deve tenerne conto (ora ${tratte.map(t => t.grup).join('/')}).`, 'CEI-UNEL 35024/1');
@@ -855,26 +858,31 @@ function compute(S) {
      ============================================================ */
   const lot = S.lot === 100 ? 100 : 50;
   const wbAuto = LP(`wb.${P.key}.${lot}`, lot === 100 ? P.p100 : P.p50); d.wbAuto = wbAuto;
-  const wbPrice = S.wb_price > 0 ? S.wb_price : wbAuto; d.wbPrice = wbPrice;
-  add(C.WB, 'wb', `${P.name} (${P.code}) · impostata a ${tg.label.replace(' · sconsigliata', '')}, ${P.cable}, RDC-DD 6 mA DC ${P.rdc ? 'integrato' : 'assente'}`, n, 'pz', wbPrice, { mat: true, vcat: 'wb', ref: 'CEI EN IEC 61851-1 · CEI 64-8 sez. 722 · ' + SEH_SRC });
-  if (S.rfid && P.key === 'mini') add(C.WB, 'wo2', 'Opzione WO2: attivazione ricarica con card RFID', n, 'pz', SEH.wo2, { mat: true, vcat: 'wb' });
+  const wbPrice = S.wb_price > 0 ? S.wb_price : (spot ? 0 : wbAuto); d.wbPrice = wbPrice;
+  const src = spot ? ('Offerta singola' + (S.spot_name ? ': ' + S.spot_name : '')) : SEH_SRC; d.src = src;
+  if (spot && !(S.wb_price > 0)) chk('err', 'Prezzo dell\'offerta singola mancante', 'Con «Offerta singola» inserire il costo della wallbox (prezzo unico del fornitore, IVA esclusa).');
+  add(C.WB, 'wb', `${spot && P.key !== 'custom' ? P.name.replace('S&h ', '') : P.name}${spot ? '' : ' (' + P.code + ')'} · impostata a ${tg.label.replace(' · sconsigliata', '')}, ${P.cable}, RDC-DD 6 mA DC ${P.rdc ? 'integrato' : 'assente'}`, n, 'pz', wbPrice, { mat: true, vcat: 'wb', ref: 'CEI EN IEC 61851-1 · CEI 64-8 sez. 722 · ' + src });
+  if (!spot && S.rfid && P.key === 'mini') add(C.WB, 'wo2', 'Opzione WO2: attivazione ricarica con card RFID', n, 'pz', SEH.wo2, { mat: true, vcat: 'wb' });
   const conn = com ? (S.dlm === 'rotopark' ? 'slave' : S.dlm === 'ocpp' ? (S.conn === 'lte' ? 'lte' : 'eth') : S.conn) : S.conn; d.conn = conn;
-  if (conn === 'eth') add(C.WB, 'wo6', 'Opzione WO6: connessione OCPP 1.6 Ethernet', n, 'pz', SEH.wo6, { mat: true, vcat: 'wb' });
-  if (conn === 'lte') add(C.WB, 'wo8', 'Opzione WO8: modem 4G LTE (SIM a carico del cliente)', n, 'pz', SEH.wo8, { mat: true, vcat: 'wb' });
+  if (!spot && conn === 'eth') add(C.WB, 'wo6', 'Opzione WO6: connessione OCPP 1.6 Ethernet', n, 'pz', SEH.wo6, { mat: true, vcat: 'wb' });
+  if (!spot && conn === 'lte') add(C.WB, 'wo8', 'Opzione WO8: modem 4G LTE (SIM a carico del cliente)', n, 'pz', SEH.wo8, { mat: true, vcat: 'wb' });
   if (S.cavo7) { add(C.WB, 'cavo7', 'Cavo di ricarica da 7 m (opzione da quotare)', n, 'pz', SEH.cavo7, { mat: true, vcat: 'wb' }); if (!(SEH.cavo7 > 0)) chk('warn', 'Cavo 7 m non quotato', 'L\'offerta S&h indica il cavo da 7 m come opzionale senza prezzo: chiederlo.'); }
-  if (S.sped_pz) add(C.WB, 'wo14', 'Spedizione wallbox in Italia (WO14)', n, 'pz', SEH.wo14, { mat: true, vcat: 'wb' });
-  else add(C.WB, 'wo14', 'Spedizione wallbox (WO14) ripartita sul lotto', n, 'pz', +(SEH.wo14 / 25).toFixed(2), { mat: true, vcat: 'wb' });
-  if (S.se8 && P.key !== 'custom') add(C.WB, 'se8', 'Estensione garanzia S&h a 24 mesi (SE8)', n, 'pz', +(wbPrice * SEH.se8 / 100).toFixed(2), { vcat: 'wb', ref: 'Codice del Consumo art. 128 e ss. (garanzia legale 24 mesi)' });
-  if (!S.se8) chk('warn', 'Garanzia del costruttore 12 mesi', 'Verso il consumatore la garanzia legale è di 24 mesi: senza SE8 il secondo anno (uscita, smontaggio, spedizione) resta a carico dell\'installatore.', 'D.Lgs. 206/2005 art. 128 e ss.');
+  if (spot) { add(C.WB, 'ship', 'Spedizione e trasporto dell\'ordine (offerta singola)', S.spot_ship > 0 ? 1 : 0, 'a corpo', S.spot_ship, { mat: true, vcat: 'wb' });
+    if ((S.spot_warr || 0) < 24) chk('warn', `Garanzia del fornitore ${S.spot_warr || 0} mesi`, 'Verso il consumatore la garanzia legale è di 24 mesi: la differenza resta a carico dell\'installatore. Chiedere l\'estensione o accantonare una riserva.', 'D.Lgs. 206/2005 art. 128 e ss.');
+  } else if (S.sped_pz) add(C.WB, 'wo14', 'Spedizione wallbox in Italia (WO14)', n, 'pz', SEH.wo14, { mat: true, vcat: 'wb' });
+  else if (!spot) add(C.WB, 'wo14', 'Spedizione wallbox (WO14) ripartita sul lotto', n, 'pz', +(SEH.wo14 / 25).toFixed(2), { mat: true, vcat: 'wb' });
+  if (!spot && S.se8 && P.key !== 'custom') add(C.WB, 'se8', 'Estensione garanzia S&h a 24 mesi (SE8)', n, 'pz', +(wbPrice * SEH.se8 / 100).toFixed(2), { vcat: 'wb', ref: 'Codice del Consumo art. 128 e ss. (garanzia legale 24 mesi)' });
+  if (!spot && !S.se8) chk('warn', 'Garanzia del costruttore 12 mesi', 'Verso il consumatore la garanzia legale è di 24 mesi: senza SE8 il secondo anno (uscita, smontaggio, spedizione) resta a carico dell\'installatore.', 'D.Lgs. 206/2005 art. 128 e ss.');
   if (S.supporto === 'piantana') add(C.WB, 'piantana', 'Piantana a pavimento con fissaggi (da verificare compatibilità con il modello)', n, 'pz', PR.piantana, { mat: true });
   if (S.paracolpi) add(C.WB, 'paracolpi', 'Paracolpi/dissuasore di protezione della stazione', n, 'pz', PR.paracolpi, { mat: true });
 
   // protezioni del punto
   const rcboIdS = rcdNeed === 'B' ? 'rcbo_b' : 'rcbo_a';
-  const rcboSeh = S.rcbo_src === 'seh' && rcdNeed === 'A';
-  const rcboUnit = rcboSeh ? (ph === 3 ? SEH.wo13 : SEH.wo12) : PR[rcboIdS + (ph === 3 ? '3' : '1')];
-  const rcboDesc = `${rcboSeh ? (ph === 3 ? 'WO13 S&h' : 'WO12 S&h') + ': m' : 'M'}agnetotermico differenziale ${ph === 3 ? '4P' : '1P+N'} C${InLine} tipo ${rcdNeed} IΔn 30 mA, Icn ${rcboIcn} kA, dedicato al punto di ricarica`;
-  add(C.QE, 'rcbo', rcboDesc, n, 'pz', rcboUnit, { mat: true, ref: 'CEI 64-8 sez. 722.531 e 722.533 · CEI EN 61009-1' });
+  const rcboSeh = rcboSrc === 'seh' && rcdNeed === 'A';
+  const rcboUnit = rcboSrc === 'spot' ? 0 : rcboSeh ? (ph === 3 ? SEH.wo13 : SEH.wo12) : PR[rcboIdS + (ph === 3 ? '3' : '1')];
+  const rcboDesc = `${rcboSrc === 'spot' ? 'Compresa nell\'offerta del fornitore: m' : rcboSeh ? (ph === 3 ? 'WO13 S&h' : 'WO12 S&h') + ': m' : 'M'}agnetotermico differenziale ${ph === 3 ? '4P' : '1P+N'} C${InLine} tipo ${rcdNeed} IΔn 30 mA, Icn ${rcboIcn} kA, dedicato al punto di ricarica`;
+  if (rcboSrc === 'spot') items.push({ cat: C.QE, id: 'rcbo', desc: rcboDesc, qty: n, um: 'pz', unit: 0, def: 0, edited: false, mat: true, pass: false, nomk: false, vcat: 'imp', bonus: true, ref: 'CEI 64-8 sez. 722.531 e 722.533', tot: 0 });
+  else add(C.QE, 'rcbo', rcboDesc, n, 'pz', rcboUnit, { mat: true, ref: 'CEI 64-8 sez. 722.531 e 722.533 · CEI EN 61009-1' });
   if (com) {
     if (S.mid) add(C.QE, 'mid', `Contatore di energia MID ${ph === 3 ? 'trifase' : 'monofase'} per punto`, n, 'pz', ph === 3 ? PR.mid_3 : PR.mid_1, { mat: true, ref: 'D.Lgs. 84/2016 · EN 50470' });
   } else {
@@ -1058,7 +1066,7 @@ function compute(S) {
 
   /* ---- lotto S&h ---- */
   const lo = { size: lot, unit: wbAuto, commit: lot * wbAuto, adv: lot * wbAuto * 0.2, months: S.n_year > 0 ? lot / (S.n_year / 12) : null };
-  if (P.key !== 'custom') {
+  if (P.key !== 'custom' && !spot) {
     if (lo.months !== null && lo.months > 12) chk('warn', 'Impegno di acquisto del lotto', `Lotto da ${lot} pezzi (${Math.round(lo.commit).toLocaleString('it-IT')} €, anticipo 20% = ${Math.round(lo.adv).toLocaleString('it-IT')} €) con ${S.n_year} installazioni/anno: ≈ ${Math.round(lo.months)} mesi per assorbirlo contro ritiri entro 12 mesi. Chiedere lotti misti Mini/Elegance o un lotto minore.`, SEH_SRC);
     else if (lo.months !== null) chk('ok', 'Assorbimento del lotto', `Lotto da ${lot} pezzi assorbito in ≈ ${Math.round(lo.months)} mesi con ${S.n_year} installazioni/anno.`, SEH_SRC);
   }
@@ -1080,7 +1088,7 @@ function compute(S) {
 
 /* ---------- Listino a pacchetto: stessa offerta ricalcolata per ogni taglia con una linea standard ---------- */
 function packList(S0) {
-  const base = JSON.parse(JSON.stringify(S0)); base.price_mode = 'markup'; base.ov = {}; base.wb_price = 0; base.prod = 'auto'; base.days_man = 0; base.prof_eur = 0;
+  const base = JSON.parse(JSON.stringify(S0)); base.price_mode = 'markup'; base.ov = {}; if (base.supply !== 'spot') base.wb_price = 0; base.prod = 'auto'; base.days_man = 0; base.prof_eur = 0;
   const com = base.tipo === 'condo_com';
   const keys = com ? ['m74', 't11', 't22'] : ['m37', 'm46', 'm575', 'm74', 't11', 't22'];
   const mk = (tk, mods) => { const s = JSON.parse(JSON.stringify(base)); s.taglia = tk; if (!com) { s.tratte = [{ posa: base.pk_posa, m: base.pk_m, grup: 1, t: 30, d: '' }]; s.carot = base.pk_car; s.rei = 0; s.pozz = 0; s.pot_new = 0; s.fase = TAGLIE[tk].ph === 3 ? 'tri' : base.fase; s.terra_new = false; s.supporto = 'parete'; s.paracolpi = false; } if (mods) mods(s); return compute(s); };
@@ -1404,9 +1412,9 @@ const SCHEMA_F = [
   ] },
   { id: 'tratte', g: 'imp', custom: 'tratte', t: 'Tratte della linea', s: 'percorso, posa, raggruppamento: la sezione si sceglie sulla tratta peggiore' },
   { id: 'prot', g: 'imp', t: 'Protezioni, verifiche e opere', s: 'differenziale, SPD, caduta di tensione, carotaggi, antincendio', f: [
-    { k: 'rcbo_src', l: 'Protezione del punto', t: 'o', o: [['seh', 'Fornita da S&h (WO12/WO13, tipo A)'], ['own', 'Propria da grossista']] },
+    { k: 'rcbo_src', l: 'Protezione del punto', when: S => S.supply !== 'spot', t: 'o', o: [['seh', 'Fornita da S&h (WO12/WO13, tipo A)'], ['own', 'Propria da grossista']] },
     { k: 'rcd_type', l: 'Tipo di differenziale', t: 'o', o: [['auto', 'Automatico (A se la wallbox ha RDC-DD 6 mA)'], ['A', 'Tipo A'], ['B', 'Tipo B']] },
-    { k: 'rcbo_icn', l: 'Potere di interruzione protezione S&h', t: 'n', u: 'kA', step: 0.5, when: S => S.rcbo_src === 'seh', h: 'Non dichiarato nell\'offerta: da chiedere (ipotesi 6 kA).' },
+    { k: 'rcbo_icn', l: 'Potere di interruzione della protezione fornita', t: 'n', u: 'kA', step: 0.5, when: S => (S.supply !== 'spot' && S.rcbo_src === 'seh') || (S.supply === 'spot' && S.spot_rcbo), h: 'Non dichiarato nell\'offerta: da chiedere (ipotesi 6 kA).' },
     { k: 'spd', l: 'SPD tipo 2 all\'origine', t: 'c' },
     { k: 'q_arr', l: 'Quadretto di arrivo con sezionatore', t: 'c' },
     { k: 'dv_max', l: 'Caduta di tensione massima totale', t: 'n', u: '%', step: 0.5 },
@@ -1431,12 +1439,17 @@ const SCHEMA_F = [
     { k: 'prof', l: 'Progetto da professionista', t: 'o', o: [['auto', 'Automatico (se obbligatorio)'], ['si', 'Sempre'], ['no', 'Mai']] },
     { k: 'prof_eur', l: 'Compenso progetto', t: 'n', u: '€', step: 50, auto: (r) => nf(r.d.progAuto, 0), h: 'Passa a costo, senza ricarico. Vuoto = valore del Listino.' }
   ] },
-  { id: 'forn', g: 'com', t: 'Fornitore e lotto', s: 'prezzi S&h, impegno di acquisto, garanzia', open: true, f: [
-    { k: 'lot', l: 'Lotto di acquisto', t: 'o', o: [[50, '50 pezzi'], [100, '100 pezzi']], num: true },
-    { k: 'wb_price', l: 'Costo wallbox', t: 'n', u: '€/pz', step: 1, auto: (r) => nf(r.d.wbAuto, 0), h: 'Vuoto = prezzo di lotto dal Listino (offerta S&h).' },
-    { k: 'se8', l: 'Estensione garanzia a 24 mesi (SE8, +3%)', t: 'c', wide: true },
-    { k: 'sped_pz', l: 'Spedizione WO14 a pezzo', t: 'c', h: 'Se tolta, i 30 € sono ripartiti su 25 pezzi (consegna a lotti).' },
-    { k: 'n_year', l: 'Installazioni previste all\'anno', t: 'n', step: 5, h: 'Per verificare l\'assorbimento del lotto (ritiri entro 12 mesi).' }
+  { id: 'forn', g: 'com', t: 'Fornitore e prezzo della wallbox', s: 'listino S&h a lotti oppure offerta singola a prezzo unico', open: true, f: [
+    { k: 'supply', l: 'Fonte del prezzo', t: 'o', o: [['seh', 'Listino S&h (lotti 50/100, opzioni, SE8, WO14)'], ['spot', 'Offerta singola: inserisco io il costo']], wide: true, h: 'Con l\'offerta singola spariscono lotto, opzioni S&h, SE8 e WO14: il costo è quello che inserisci. Per un modello non S&h scegli «Altra wallbox» nella sezione Punto di ricarica.' },
+    { k: 'lot', l: 'Lotto di acquisto', t: 'o', o: [[50, '50 pezzi'], [100, '100 pezzi']], num: true, when: S => S.supply !== 'spot' },
+    { k: 'wb_price', l: 'Costo wallbox', t: 'n', u: '€/pz', step: 1, auto: (r) => r.d.spot ? '—' : nf(r.d.wbAuto, 0), h: 'Listino S&h: vuoto = prezzo di lotto. Offerta singola: prezzo unico del fornitore, IVA esclusa (obbligatorio).' },
+    { k: 'spot_name', l: 'Fornitore e riferimento offerta', t: 's', when: S => S.supply === 'spot' },
+    { k: 'spot_ship', l: 'Spedizione dell\'ordine', t: 'n', u: '€ a corpo', step: 5, when: S => S.supply === 'spot', h: '0 = compresa nel prezzo.' },
+    { k: 'spot_warr', l: 'Garanzia del fornitore', t: 'n', u: 'mesi', step: 12, when: S => S.supply === 'spot' },
+    { k: 'spot_rcbo', l: 'Protezione differenziale compresa nel prezzo', t: 'c', when: S => S.supply === 'spot', h: 'Se tolta, si usa la protezione propria del Listino prezzi.' },
+    { k: 'se8', l: 'Estensione garanzia a 24 mesi (SE8, +3%)', t: 'c', wide: true, when: S => S.supply !== 'spot' },
+    { k: 'sped_pz', l: 'Spedizione WO14 a pezzo', t: 'c', when: S => S.supply !== 'spot', h: 'Se tolta, i 30 € sono ripartiti su 25 pezzi (consegna a lotti).' },
+    { k: 'n_year', l: 'Installazioni previste all\'anno', t: 'n', step: 5, when: S => S.supply !== 'spot', h: 'Per verificare l\'assorbimento del lotto (ritiri entro 12 mesi).' }
   ] },
   { id: 'inc', g: 'com', t: 'Bonus colonnine e oneri', s: 'contributo 80%, costi del distributore, pratiche', f: [
     { k: 'bonus_on', l: 'Stima del bonus colonnine domestiche', t: 'c', wide: true, h: 'Contributo a domanda, non sconto in fattura.' },
@@ -1592,7 +1605,7 @@ function schemaSvg(R, S) {
     s += wire(x, y, qx, y);
     s += `<rect x="${qx}" y="${y - 62}" width="${qw}" height="150" rx="6" fill="none" stroke="currentColor" stroke-width="1.2" stroke-dasharray="6 4"/>` + svgT(qx + 8, y - 48, S.origine === 'quadro' ? 'Derivazione nel quadro esistente' : 'Quadretto di partenza IP65', { fs: 10, b: true });
     s += wire(qx, y, qx + 40, y);
-    s += brk(qx + 70, y, `${poles} C${d.In}`, [`Id ${d.rcd} 30 mA · ${nf(d.rcboIcn, 0)} kA`, S.rcbo_src === 'seh' ? (ph === 3 ? 'S&h WO13' : 'S&h WO12') : 'RCBO proprio'], true);
+    s += brk(qx + 70, y, `${poles} C${d.In}`, [`Id ${d.rcd} 30 mA · ${nf(d.rcboIcn, 0)} kA`, d.rcboSrc === 'seh' ? (ph === 3 ? 'S&h WO13' : 'S&h WO12') : d.rcboSrc === 'spot' ? 'del fornitore' : 'RCBO proprio'], true);
     s += wire(qx + 88, y, qx + qw, y);
     if (S.spd && !(S.origine === 'quadro')) { s += `<circle cx="${qx + 190}" cy="${y}" r="2.5" fill="currentColor"/>` + spdSym(qx + 190, y, ''); s += svgT(qx + 201, y + 34, `SPD T2 ${ph === 3 ? '3P+N' : '1P+N'}`, { fs: 9.5 }); }
     // linea
@@ -1703,9 +1716,9 @@ function confrontiHtml(R, S) {
     ${c ? `<div><dt>${esc(c.name)}</dt><dd><b>${eur(c.price)}</b> · differenza ${(c.delta > 0 ? '+' : '') + eur(c.delta)} (${(c.deltaPct > 0 ? '+' : '') + nf(c.deltaPct, 1)} %)</dd></div><div><dt>Per eguagliarli</dt><dd>ricarico <b>${nf(c.matchMarkup, 1)}%</b> → margine ${nf(c.matchMargin, 1)}%, utile ${eur(c.matchProfit)}</dd></div>` : '<div><dt>Concorrente</dt><dd class="muted">Inserisci il prezzo nella sezione «Confronto con la concorrenza».</dd></div>'}</dl>
     <p class="help" style="margin-top:6px">${esc(M.note)}.</p></div>
   <div><h3 style="margin:0 0 6px;font-size:14px">Fornitore, lotto e servizi</h3><dl class="dims">
-    <div><dt>Costo wallbox (lotto ${lo.size})</dt><dd>${eur2(d.wbPrice)} ${d.wbPrice !== d.wbAuto ? '(inserito a mano, listino ' + eur2(d.wbAuto) + ')' : ''}</dd></div>
+    ${d.spot ? `<div><dt>Costo wallbox (offerta singola)</dt><dd>${eur2(d.wbPrice)} · ${esc(d.src)} · garanzia ${S.spot_warr} mesi</dd></div>` : `<div><dt>Costo wallbox (lotto ${lo.size})</dt><dd>${eur2(d.wbPrice)} ${d.wbPrice !== d.wbAuto ? '(inserito a mano, listino ' + eur2(d.wbAuto) + ')' : ''}</dd></div>
     <div><dt>Impegno del lotto / anticipo 20%</dt><dd>${eur(lo.commit)} / ${eur(lo.adv)}</dd></div>
-    <div><dt>Assorbimento</dt><dd>${lo.months === null ? '—' : '≈ ' + nf(lo.months, 0) + ' mesi con ' + S.n_year + ' installazioni/anno (ritiri entro 12 mesi)'}</dd></div>
+    <div><dt>Assorbimento</dt><dd>${lo.months === null ? '—' : '≈ ' + nf(lo.months, 0) + ' mesi con ' + S.n_year + ' installazioni/anno (ritiri entro 12 mesi)'}</dd></div>`}
     <div><dt>Business pack</dt><dd>${S.bp_on ? `${nf(sv.bpTier, 1)} €/mese·pdr → ${eur(sv.bpCost)}/anno di costo` : 'non incluso'}</dd></div>
     <div><dt>Manutenzione programmata</dt><dd>${S.manut_on ? `${S.manut_int} interventi/anno → ${eur(sv.manCost)}/anno di costo` : 'non inclusa'}</dd></div>
     ${sv.costY > 0 ? `<div><dt>Canone servizi proposto</dt><dd><b>${eur(sv.priceY)}</b>/anno + IVA (ricarico ${nf(S.svc_markup, 0)}%)</dd></div>` : ''}
@@ -1892,7 +1905,7 @@ function printInternal() {
   <div class="pr-hero"><div class="us"><span class="l">Costo interno</span><span class="v">${eur(tot.cost)}</span><span class="n">${d.n > 1 ? eur(tot.costPdr) + ' a punto' : ''}</span></div><div class="them"><span class="l">Prezzo netto / IVA incl.</span><span class="v">${eur(tot.net)}</span><span class="n">${eur(tot.gross)} IVA inclusa${d.n > 1 ? ' · ' + eur(tot.perPdr) + ' a punto' : ''}</span></div></div>
   <div class="pr-mini"><div><span class="l">Margine</span><span class="v">${nf(tot.margin, 1)}%</span><span class="n">sul prezzo netto</span></div><div class="pro"><span class="l">Utile lordo</span><span class="v">${eur(tot.profit)}</span><span class="n">ricarico ${nf(tot.markup, 1)}%</span></div><div><span class="l">Bonus cliente</span><span class="v">${eur(bonus.contrib)}</span><span class="n">netto ${eur(bonus.netto)}</span></div><div class="sic"><span class="l">Lavori</span><span class="v">${d.days} gg</span><span class="n">${nf(d.hTot, 1)} h produttive</span></div></div>
   <h2>Riepilogo per categoria</h2><table><thead><tr><th>Categoria</th><th class="n c-us">Costo</th><th class="n c-them">Prezzo netto</th></tr></thead><tbody>${catRows}<tr><td>Trasporto e imprevisti</td><td class="n c-us">${eur(tot.cost - tot.itemsCost)}</td><td></td></tr><tr class="t"><td>Totale</td><td class="n c-us">${eur(tot.cost)}</td><td class="n c-them">${eur(tot.net)}</td></tr></tbody></table>
-  <h2>Fornitore, lotto, mercato</h2><table><tbody><tr><td>Wallbox ${esc(d.P.short)}: ${eur2(d.wbPrice)} (lotto ${lo.size}); impegno ${eur(lo.commit)}, anticipo 20% ${eur(lo.adv)}; assorbimento ${lo.months === null ? '—' : '≈ ' + nf(lo.months, 0) + ' mesi'} con ${S.n_year} installazioni/anno.</td></tr>
+  <h2>Fornitore, lotto, mercato</h2><table><tbody><tr><td>${d.spot ? `Wallbox ${esc(d.P.short)}: ${eur2(d.wbPrice)} · ${esc(d.src)} · garanzia fornitore ${S.spot_warr} mesi.` : `Wallbox ${esc(d.P.short)}: ${eur2(d.wbPrice)} (lotto ${lo.size}); impegno ${eur(lo.commit)}, anticipo 20% ${eur(lo.adv)}; assorbimento ${lo.months === null ? '—' : '≈ ' + nf(lo.months, 0) + ' mesi'} con ${S.n_year} installazioni/anno.`}</td></tr>
   ${M ? `<tr><td>Prezzo ${M.unit} ${eur(M.ours)} · fascia indicativa ${eur(M.lo)}–${eur(M.hi)}: ${M.pos === 'dentro' ? 'nella fascia' : M.pos === 'sopra' ? 'sopra la fascia' : 'sotto la fascia'}${M.conc ? ` · ${esc(M.conc.name)} ${eur(M.conc.price)} (${(M.conc.delta > 0 ? '+' : '') + eur(M.conc.delta)}); per eguagliarli ricarico ${nf(M.conc.matchMarkup, 1)}%, margine ${nf(M.conc.matchMargin, 1)}%` : ''}</td></tr>` : ''}
   ${sv.costY > 0 || sv.rent ? `<tr><td>Servizi: costo ${eur(sv.costY)}/anno, prezzo ${eur(sv.priceY)}/anno${sv.rent ? ` · canone ${eur(sv.rent.net)}/mese × ${sv.rent.months} (coefficiente ${nf(S.rent_coef, 2)}%, ipotesi)` : ''}</td></tr>` : ''}</tbody></table>
   <h2 class="pr-sec">Computo estimativo</h2><table><thead><tr><th>Voce</th><th>UM</th><th class="n">Q.tà</th><th class="n">Unit.</th><th class="n c-us">Costo</th></tr></thead><tbody>${rows}</tbody></table>
@@ -1908,7 +1921,7 @@ function printPack() {
     : `<tr><td>${esc(r.label)}${r.netMin != null ? `<small>linea per la sola taglia (${r.secMin}): ${eur(r.netMin)}</small>` : ''}</td><td>${esc(r.prod)}</td><td>${r.sec}</td><td class="n c-us">${eur(r.cost)}</td><td class="n c-them"><b>${eur(r.net)}</b></td><td class="n">${eur(r.gross)}</td><td class="n">${nf(r.margin, 1)}%</td><td class="n">${eur(r.bonus)}</td></tr>`).join('');
   const ex = !PK.com && PK.rows[3] ? PK.rows[3].ex : null;
   return `${printHead('Listino a pacchetto per taglia', 'Uso interno · ' + TIPO_LABEL[S.tipo], S, o)}
-  <p class="pr-sub">${PK.com ? `Condominio con ${PK.base.n} punti: infrastruttura a corpo e prezzo marginale per punto. Ricarico ${nf(PK.markup, 1)}%.` : `Installazione standard: ${PK.base.m} m ${E.POSE[PK.base.posa].l.toLowerCase()}, ${PK.base.car} carotaggi, linea per 32 A, protezione ${S.rcbo_src === 'seh' ? 'S&h' : 'propria'}, nessun aumento di potenza. Ricarico ${nf(PK.markup, 1)}%.`}</p>
+  <p class="pr-sub">${PK.com ? `Condominio con ${PK.base.n} punti: infrastruttura a corpo e prezzo marginale per punto. Ricarico ${nf(PK.markup, 1)}%.` : `Installazione standard: ${PK.base.m} m ${E.POSE[PK.base.posa].l.toLowerCase()}, ${PK.base.car} carotaggi, linea per 32 A, protezione ${R.d.rcboSrc === 'seh' ? 'S&h' : R.d.rcboSrc === 'spot' ? 'del fornitore' : 'propria'}, nessun aumento di potenza. Ricarico ${nf(PK.markup, 1)}%.`}</p>
   <table><thead>${head}</thead><tbody>${rows}</tbody></table>
   ${ex ? `<h2>Extra</h2><table><thead><tr><th>Voce</th><th class="n">Prezzo netto</th></tr></thead><tbody><tr><td>Metro aggiuntivo di linea a vista</td><td class="n">${eur2(ex.vista)}</td></tr><tr><td>Metro aggiuntivo sottotraccia (con opera muraria)</td><td class="n">${eur2(ex.traccia)}</td></tr><tr><td>Metro aggiuntivo interrato (con scavo e ripristino)</td><td class="n">${eur2(ex.interrato)}</td></tr><tr><td>Carotaggio aggiuntivo</td><td class="n">${eur(ex.carot)}</td></tr><tr><td>Piantana a pavimento</td><td class="n">${eur(ex.piantana)}</td></tr><tr><td>Paracolpi</td><td class="n">${eur(ex.paracolpi)}</td></tr></tbody></table><p class="pr-note">Extra calcolati come differenza di prezzo sulla taglia 7,4 kW. Aumento di potenza (oneri del distributore a parte), progetto oltre 6 kW, adeguamento della terra e opere non standard: a preventivo.</p>` : ''}
   <p class="pr-note">Prezzi IVA esclusa salvo colonna «IVA incl.» (regime: ${esc(S.fisc.ivaMode)}). Costi da listino S&h e listino personale alla data di stampa.</p>`;
